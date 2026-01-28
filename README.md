@@ -39,7 +39,8 @@ go build -o slurm-tracker
 
 To use this program, you need an API key from the ACTIVATE platform.
 
-For detailed instructions on how to generate one, see the [ACTIVATE API Key Documentation](https://parallelworks.com/docs/account-settings/authentication).
+For detailed instructions on how to generate an api key, see the [ACTIVATE API Key Documentation](https://parallelworks.com/docs/account-settings/authentication).
+
 
 ## Configuration
 
