@@ -56,6 +56,34 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create tag if not exists (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists"
+          else
+            echo "Creating tag $VERSION"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$VERSION" -m "Release $VERSION"
+            git push origin "$VERSION"
+          fi
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -70,15 +98,6 @@ jobs:
           for f in slurm-tracker-*; do
             sha256sum "$f" > "$f.sha256"
           done
-
-      - name: Determine version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
