@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,7 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/parallelworks/core/packages/go/client"
+	parallelworks "github.com/parallelworks/sdk/go"
+
 	"github.com/spf13/cobra"
 
 	"github.com/rs/zerolog"
@@ -18,7 +20,7 @@ import (
 )
 
 var (
-	pwClient *client.APIClient
+	pwClient *parallelworks.ClientWithResponses
 	config   Config
 )
 
@@ -69,9 +71,25 @@ func preRun(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize API client
-	pwClient = client.NewAPIClient(client.WithAPIKeyAuth(apiKey))
-	if config.PlatformHost != "" {
-		pwClient.SetApiServer(config.PlatformHost)
+	// Determine the platform host
+	platformHost := config.PlatformHost
+	if platformHost == "" {
+		// Try to extract from API key if it's a pwt_ key
+		if parallelworks.IsAPIKey(apiKey) {
+			extractedHost, err := parallelworks.ExtractPlatformHost(apiKey)
+			if err == nil {
+				platformHost = "https://" + extractedHost
+			}
+		}
+		if platformHost == "" {
+			return fmt.Errorf("no platform host provided. Set PW_PLATFORM_HOST environment variable or use --api-server flag")
+		}
+	}
+
+	var err error
+	pwClient, err = parallelworks.NewClientWithResponses(platformHost, parallelworks.WithAPIKey(apiKey))
+	if err != nil {
+		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
 	return nil
@@ -201,6 +219,7 @@ func loadConfigFile(path string) error {
 // 	return string(data)
 
 // }
+
 func getSlurmJobs(lookbackMinutes int) ([]SlurmJob, error) {
 	// Calculate the start time
 	startTime := time.Now().Add(-time.Duration(lookbackMinutes) * time.Minute)
@@ -355,13 +374,13 @@ func processJob(config Config, job SlurmJob, stateDriver *StateDriver) error {
 		metadata["qos"] = job.QOS
 	}
 
-	usageEvent := client.UsageEventRequest{
+	usageEvent := parallelworks.PostUsageEventInput{
 		Quantity:  coreHours,
 		StartedAt: startedAt,
 		EndedAt:   endedAt,
-		Metadata:  metadata,
+		Metadata:  &metadata,
 		// TODO: set user
-		// CreatedByUser: &job.User,
+		User: &job.User,
 	}
 
 	status := "running"
@@ -406,7 +425,7 @@ func processJob(config Config, job SlurmJob, stateDriver *StateDriver) error {
 	}
 
 	// Update the usage event with the looked-up SKU
-	usageEvent.CustomSKUCode = skuCode
+	usageEvent.Sku = skuCode
 
 	log.Info().
 		Int("job_id", job.JobID).
@@ -434,10 +453,13 @@ func processJob(config Config, job SlurmJob, stateDriver *StateDriver) error {
 	}
 
 	// Post the usage event using the allocation from config mapping
-	_, err := pwClient.CreateUsageEvent(config.OrganizationName, allocationName, usageEvent)
+	resp, err := pwClient.CreateUsageEventWithResponse(context.Background(), config.OrganizationName, allocationName, usageEvent)
 	if err != nil {
 		// Don't update state on failure - job will be retried next run
 		return err
+	}
+	if resp.StatusCode() >= 400 {
+		return fmt.Errorf("failed to create usage event: %s", resp.Status())
 	}
 
 	// Update state only after successful API call
@@ -448,12 +470,7 @@ func processJob(config Config, job SlurmJob, stateDriver *StateDriver) error {
 }
 
 func isJobRunning(job SlurmJob) bool {
-	for _, state := range job.State.Current {
-		if state == "RUNNING" {
-			return true
-		}
-	}
-	return false
+	return job.State.Current == "RUNNING"
 }
 
 func isJobCompleted(job SlurmJob) bool {
@@ -466,12 +483,7 @@ func isJobCompleted(job SlurmJob) bool {
 		"NODE_FAIL": true,
 	}
 
-	for _, state := range job.State.Current {
-		if completedStates[state] {
-			return true
-		}
-	}
-	return false
+	return completedStates[job.State.Current]
 }
 
 func calculateCoreHoursForElapsed(job SlurmJob, elapsedSeconds int) float64 {

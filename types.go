@@ -3,17 +3,18 @@ package main
 import "time"
 
 // SacctOutput represents the JSON output from sacct command
+// Assumes slurm version 23.02.6
 type SacctOutput struct {
 	Meta struct {
 		Slurm struct {
 			Version struct {
-				Major   string `json:"major"`
-				Minor   string `json:"minor"`
-				Micro   string `json:"micro"`
+				Major   int    `json:"major"`
+				Minor   int    `json:"minor"`
+				Micro   int    `json:"micro"`
 				Release string `json:"release"`
 				Cluster string `json:"cluster"`
-			} `json:"slurm"`
-		} `json:"slurm"`
+			} `json:"version"`
+		} `json:"Slurm"`
 	} `json:"meta"`
 	Jobs     []SlurmJob `json:"jobs"`
 	Errors   []any      `json:"errors"`
@@ -35,18 +36,14 @@ type SlurmJob struct {
 	Account         string `json:"account"`
 	AllocationNodes int    `json:"allocation_nodes"`
 	State           struct {
-		Current []string `json:"current"`
-		Reason  string   `json:"reason"`
+		Current string `json:"current"`
+		Reason  string `json:"reason"`
 	} `json:"state"`
 	Partition string `json:"partition"`
 	QOS       string `json:"qos"`
 	ExitCode  struct {
-		Status     []string    `json:"status"`
-		ReturnCode NumberValue `json:"return_code"`
-		Signal     struct {
-			ID   NumberValue `json:"id"`
-			Name string      `json:"name"`
-		} `json:"signal"`
+		Status     string `json:"status"`
+		ReturnCode int    `json:"return_code"`
 	} `json:"exit_code"`
 	Time struct {
 		Submission int64       `json:"submission"`

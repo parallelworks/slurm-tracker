@@ -1,0 +1,32 @@
+{
+  "defaultSku": "standard-compute",
+  "defaultAllocation": "default-allocation-oid",
+  "partition": [
+    {
+      "name": "compute",
+      "sku": "standard-compute"
+    },
+    {
+      "name": "gpu",
+      "sku": "gpu-compute"
+    },
+    {
+      "name": "highmem",
+      "sku": "high-memory-compute"
+    }
+  ],
+  "account": [
+    {
+      "name": "research-team",
+      "allocation": "allocation-oid-12345"
+    },
+    {
+      "name": "engineering",
+      "allocation": "allocation-oid-67890"
+    },
+    {
+      "name": "data-science",
+      "allocation": "allocation-oid-abcde"
+    }
+  ]
+}
