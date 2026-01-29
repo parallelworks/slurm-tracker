@@ -20,8 +20,8 @@ type PartitionMapping struct {
 	SKU  string `json:"sku"`
 }
 
-// ConfigFile represents the JSON configuration file structure
-type ConfigFile struct {
+// File represents the JSON configuration file structure
+type File struct {
 	DefaultSku        string             `json:"defaultSku"`
 	DefaultAllocation string             `json:"defaultAllocation"`
 	Partition         []PartitionMapping `json:"partition"`
@@ -49,10 +49,10 @@ func LoadConfigFile(path string, cfg *Config) error {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("config file %s not found: please create the config file or specify the correct path", path)
 		}
-		return fmt.Errorf("failed to read config file %s: %w. Please check file permissions or path.", path, err)
+		return fmt.Errorf("failed to read config file %s: %w", path, err)
 	}
 
-	var configFile ConfigFile
+	var configFile File
 	if err := json.Unmarshal(data, &configFile); err != nil {
 		return fmt.Errorf("failed to parse config file: %w", err)
 	}

@@ -103,18 +103,18 @@ func run(cmd *cobra.Command, args []string) error {
 		Msg("Starting Slurm usage event collector")
 
 	// Initialize state driver
-	stateDriver, err := state.NewStateDriver(cfg.StateFile)
+	stateDriver, err := state.NewDriver(cfg.StateFile)
 	if err != nil {
 		return fmt.Errorf("failed to initialize state driver: %w", err)
 	}
 	defer func() {
-		if err := stateDriver.Shutdown(); err != nil {
-			log.Error().Err(err).Msg("Error shutting down state driver")
+		if shutdownErr := stateDriver.Shutdown(); shutdownErr != nil {
+			log.Error().Err(shutdownErr).Msg("Error shutting down state driver")
 		}
 	}()
 
 	// Get Slurm jobs
-	jobs, err := slurm.GetSlurmJobs(cfg.LookbackMinutes)
+	jobs, err := slurm.GetJobs(cfg.LookbackMinutes)
 	if err != nil {
 		return fmt.Errorf("failed to get Slurm jobs: %w", err)
 	}
@@ -124,20 +124,20 @@ func run(cmd *cobra.Command, args []string) error {
 	semaphore := make(chan struct{}, 10)
 	waitGroup := sync.WaitGroup{}
 	// Process each job and create usage events
-	for _, job := range jobs {
+	for i := range jobs {
 		waitGroup.Add(1)
 		semaphore <- struct{}{}
-		go func(job slurm.SlurmJob) {
+		go func(job *slurm.Job) {
 			defer waitGroup.Done()
 			defer func() { <-semaphore }()
-			if err := tracker.ProcessJob(cfg, job, stateDriver, pwClient, cfg.DryRun); err != nil {
+			if err := tracker.ProcessJob(&cfg, job, stateDriver, pwClient, cfg.DryRun); err != nil {
 				log.Error().
 					Err(err).
 					Int("job_id", job.JobID).
 					Str("job_name", job.Name).
 					Msg("Failed to process job")
 			}
-		}(job)
+		}(&jobs[i])
 	}
 	waitGroup.Wait()
 
