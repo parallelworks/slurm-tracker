@@ -35,7 +35,7 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:     "northrup",
+	Use:     "slurm-tracker",
 	Short:   "Slurm usage event collector",
 	Long:    "Collects Slurm job data and creates usage events via the Parallel Works API",
 	PreRunE: preRun,
