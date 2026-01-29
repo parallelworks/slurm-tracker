@@ -43,7 +43,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          go build -ldflags="-s -w" -o slurm-tracker-${{ matrix.suffix }} .
+          go build -ldflags="-s -w" -o slurm-tracker-${{ matrix.suffix }} ./cmd/slurm-tracker
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

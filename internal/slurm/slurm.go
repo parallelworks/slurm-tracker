@@ -1,6 +1,14 @@
-package main
+package slurm
 
-import "time"
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"os/exec"
+	"time"
+
+	"github.com/rs/zerolog/log"
+)
 
 // SacctOutput represents the JSON output from sacct command
 // Assumes slurm version 23.02.6
@@ -99,56 +107,92 @@ type TresAlloc struct {
 	Count int    `json:"count"`
 }
 
-// UsageEventResponse is the response from the usage event endpoint
-type UsageEventResponse struct {
-	ID           string    `json:"id"`
-	Organization string    `json:"organization_oid"`
-	Allocation   string    `json:"allocation_oid"`
-	Quantity     float64   `json:"quantity"`
-	StartedAt    time.Time `json:"started_at"`
-	EndedAt      time.Time `json:"ended_at"`
-	CreatedAt    time.Time `json:"created_at"`
+// GetSlurmJobs queries sacct and returns parsed job data
+func GetSlurmJobs(lookbackMinutes int) ([]SlurmJob, error) {
+	// Calculate the start time
+	startTime := time.Now().Add(-time.Duration(lookbackMinutes) * time.Minute)
+	startTimeStr := startTime.Format("2006-01-02T15:04:05")
+
+	log.Debug().
+		Str("start_time", startTimeStr).
+		Msg("Querying sacct")
+
+	// Build the sacct command
+	cmd := exec.Command("sacct",
+		"--parsable2",
+		"--allocations",
+		"--units=M",
+		"--allusers",
+		"-S", startTimeStr,
+		"-E", "now",
+		"-o", "JobIDRaw,JobID,User,Account,Partition,QOS,JobName,State,ExitCode,Submit,Start,End,ElapsedRaw,AllocCPUS,AllocNodes,CPUTimeRAW,MaxRSS,AveRSS,NodeList,AllocTRES",
+		"--json",
+	)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		log.Error().
+			Str("stderr", stderr.String()).
+			Err(err).
+			Msg("sacct command failed")
+		return nil, fmt.Errorf("sacct command failed: %w", err)
+	}
+	cmdOutput := stdout.String()
+
+	// Parse the JSON output
+	var output SacctOutput
+	if err := json.Unmarshal([]byte(cmdOutput), &output); err != nil {
+		log.Error().
+			Str("stdout", cmdOutput).
+			Err(err).
+			Msg("Failed to parse sacct JSON output")
+		return nil, fmt.Errorf("failed to parse sacct output: %w", err)
+	}
+
+	return output.Jobs, nil
 }
 
-// AccountMapping maps a Slurm account to a Parallel Works allocation
-type AccountMapping struct {
-	Name       string `json:"name"`
-	Allocation string `json:"allocation"`
+// IsJobRunning returns true if the job is currently running
+func IsJobRunning(job SlurmJob) bool {
+	return job.State.Current == "RUNNING"
 }
 
-// PartitionMapping maps a Slurm partition to a SKU
-type PartitionMapping struct {
-	Name string `json:"name"`
-	SKU  string `json:"sku"`
+// IsJobCompleted returns true if the job has reached a terminal state
+func IsJobCompleted(job SlurmJob) bool {
+	completedStates := map[string]bool{
+		"COMPLETED": true,
+		"FAILED":    true,
+		"CANCELLED": true,
+		"TIMEOUT":   true,
+		"PREEMPTED": true,
+		"NODE_FAIL": true,
+	}
+
+	return completedStates[job.State.Current]
 }
 
-// ConfigFile represents the JSON configuration file structure
-type ConfigFile struct {
-	DefaultSku        string             `json:"defaultSku"`
-	DefaultAllocation string             `json:"defaultAllocation"`
-	Partition         []PartitionMapping `json:"partition"`
-	Account           []AccountMapping   `json:"account"`
-}
+// CalculateCoreHoursForElapsed calculates core hours for a given elapsed time
+func CalculateCoreHoursForElapsed(job SlurmJob, elapsedSeconds int) float64 {
+	// Elapsed time is in seconds
+	elapsedHours := float64(elapsedSeconds) / 3600.0
 
-// Config holds the application configuration
-type Config struct {
-	OrganizationName  string
-	LookbackMinutes   int
-	DryRun            bool
-	PlatformHost      string
-	StateFile         string
-	ConfigFilePath    string
-	AccountMappings   map[string]string // Slurm account -> PW allocation
-	PartitionMappings map[string]string // Slurm partition -> SKU code
-	DefaultSku        string            // Default SKU if no partition mapping found
-	DefaultAllocation string            // Default allocation if no account mapping found
-}
+	// Get allocated CPUs (cores) from TRES
+	allocatedCPUs := 0
+	for _, tres := range job.Tres.Allocated {
+		if tres.Type == "cpu" {
+			allocatedCPUs = tres.Count
+			break
+		}
+	}
 
-// JobState tracks the progress of running jobs
-type JobState struct {
-	JobID               int     `json:"job_id"`
-	LastReportedElapsed int     `json:"last_reported_elapsed"`  // seconds already reported
-	LastReportedAt      int64   `json:"last_reported_at"`       // unix timestamp
-	TotalCoreHours      float64 `json:"total_core_hours"`       // total core hours reported so far
-	CompletedAt         int64   `json:"completed_at,omitempty"` // unix timestamp when job completed (0 if still running)
+	// Fallback to required CPUs if TRES not available
+	if allocatedCPUs == 0 {
+		allocatedCPUs = job.Required.CPUs
+	}
+
+	// Core hours = CPUs * hours
+	return float64(allocatedCPUs) * elapsedHours
 }

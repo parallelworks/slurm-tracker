@@ -1,4 +1,4 @@
-package main
+package state
 
 import (
 	"database/sql"
@@ -10,6 +10,15 @@ import (
 
 	"github.com/rs/zerolog/log"
 )
+
+// JobState tracks the progress of running jobs
+type JobState struct {
+	JobID               int     `json:"job_id"`
+	LastReportedElapsed int     `json:"last_reported_elapsed"`  // seconds already reported
+	LastReportedAt      int64   `json:"last_reported_at"`       // unix timestamp
+	TotalCoreHours      float64 `json:"total_core_hours"`       // total core hours reported so far
+	CompletedAt         int64   `json:"completed_at,omitempty"` // unix timestamp when job completed (0 if still running)
+}
 
 // StateDriver manages concurrent access to job states with SQLite persistence
 type StateDriver struct {
@@ -191,7 +200,7 @@ func (d *StateDriver) CleanupOldStates(olderThan time.Duration) int {
 
 	d.mutex.Lock()
 	result, err := d.db.Exec(`
-		DELETE FROM job_states 
+		DELETE FROM job_states
 		WHERE completed_at > 0 AND completed_at < ?
 	`, cutoffTime)
 	d.mutex.Unlock()

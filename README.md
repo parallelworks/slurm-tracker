@@ -34,7 +34,7 @@ The program supports incremental reporting for long-running jobs:
 Install directly using `go install`:
 
 ```bash
-go install github.com/parallelworks/slurm-tracker@latest
+go install github.com/parallelworks/slurm-tracker/cmd/slurm-tracker@latest
 ```
 
 This will download and install the `slurm-tracker` binary to your `$GOPATH/bin` directory.
@@ -44,7 +44,7 @@ Alternatively, clone the repository and build from source:
 ```bash
 git clone https://github.com/parallelworks/slurm-tracker.git
 cd slurm-tracker
-go build -o slurm-tracker
+go build -o slurm-tracker ./cmd/slurm-tracker
 ```
 
 ## Getting an API Key
