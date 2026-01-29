@@ -25,7 +25,7 @@ type UsageEventResponse struct {
 }
 
 // ProcessJob processes a single Slurm job, calculating usage and reporting it
-func ProcessJob(cfg config.Config, job slurm.SlurmJob, stateDriver *state.StateDriver, pwClient *parallelworks.ClientWithResponses, dryRun bool) error {
+func ProcessJob(cfg *config.Config, job *slurm.Job, stateDriver *state.Driver, pwClient *parallelworks.ClientWithResponses, dryRun bool) error {
 	isRunning := slurm.IsJobRunning(job)
 	isCompleted := slurm.IsJobCompleted(job)
 
@@ -33,7 +33,7 @@ func ProcessJob(cfg config.Config, job slurm.SlurmJob, stateDriver *state.StateD
 	if !isRunning && !isCompleted {
 		log.Debug().
 			Int("job_id", job.JobID).
-			Str("state", fmt.Sprintf("%v", job.State.Current)).
+			Str("state", job.State.Current).
 			Msg("Skipping job (not running or completed)")
 		return nil
 	}

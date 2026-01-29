@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // register sqlite driver
 
 	"github.com/rs/zerolog/log"
 )
@@ -20,15 +20,15 @@ type JobState struct {
 	CompletedAt         int64   `json:"completed_at,omitempty"` // unix timestamp when job completed (0 if still running)
 }
 
-// StateDriver manages concurrent access to job states with SQLite persistence
-type StateDriver struct {
+// Driver manages concurrent access to job states with SQLite persistence
+type Driver struct {
 	db     *sql.DB
 	dbPath string
 	mutex  sync.RWMutex
 }
 
-// NewStateDriver creates a new state driver with SQLite backend
-func NewStateDriver(dbPath string) (*StateDriver, error) {
+// NewDriver creates a new state driver with SQLite backend
+func NewDriver(dbPath string) (*Driver, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -38,7 +38,7 @@ func NewStateDriver(dbPath string) (*StateDriver, error) {
 	db.SetMaxOpenConns(1) // SQLite works best with single writer
 	db.SetMaxIdleConns(1)
 
-	driver := &StateDriver{
+	driver := &Driver{
 		db:     db,
 		dbPath: dbPath,
 	}
@@ -57,7 +57,7 @@ func NewStateDriver(dbPath string) (*StateDriver, error) {
 }
 
 // initSchema creates the job_states table if it doesn't exist
-func (d *StateDriver) initSchema() error {
+func (d *Driver) initSchema() error {
 	query := `
 	CREATE TABLE IF NOT EXISTS job_states (
 		job_id INTEGER PRIMARY KEY,
@@ -73,7 +73,7 @@ func (d *StateDriver) initSchema() error {
 }
 
 // GetState retrieves a job state by ID
-func (d *StateDriver) GetState(jobID int) (JobState, bool) {
+func (d *Driver) GetState(jobID int) (JobState, bool) {
 	var state JobState
 	query := `
 		SELECT job_id, last_reported_elapsed, last_reported_at, total_core_hours, completed_at
@@ -103,7 +103,7 @@ func (d *StateDriver) GetState(jobID int) (JobState, bool) {
 }
 
 // UpdateState updates a job state immediately
-func (d *StateDriver) UpdateState(state JobState) {
+func (d *Driver) UpdateState(state JobState) {
 	query := `
 		INSERT INTO job_states (job_id, last_reported_elapsed, last_reported_at, total_core_hours, completed_at)
 		VALUES (?, ?, ?, ?, ?)
@@ -130,7 +130,7 @@ func (d *StateDriver) UpdateState(state JobState) {
 }
 
 // DeleteState removes a job state
-func (d *StateDriver) DeleteState(jobID int) {
+func (d *Driver) DeleteState(jobID int) {
 	d.mutex.Lock()
 	_, err := d.db.Exec("DELETE FROM job_states WHERE job_id = ?", jobID)
 	d.mutex.Unlock()
@@ -141,7 +141,7 @@ func (d *StateDriver) DeleteState(jobID int) {
 }
 
 // GetAllStates returns all job states
-func (d *StateDriver) GetAllStates() map[int]JobState {
+func (d *Driver) GetAllStates() map[int]JobState {
 	query := `
 		SELECT job_id, last_reported_elapsed, last_reported_at, total_core_hours, completed_at
 		FROM job_states
@@ -177,14 +177,14 @@ func (d *StateDriver) GetAllStates() map[int]JobState {
 }
 
 // getJobCount returns the number of tracked jobs
-func (d *StateDriver) getJobCount() (int, error) {
+func (d *Driver) getJobCount() (int, error) {
 	var count int
 	err := d.db.QueryRow("SELECT COUNT(*) FROM job_states").Scan(&count)
 	return count, err
 }
 
 // Shutdown gracefully shuts down the driver
-func (d *StateDriver) Shutdown() error {
+func (d *Driver) Shutdown() error {
 	if err := d.db.Close(); err != nil {
 		log.Error().Err(err).Msg("Error closing database")
 		return err
@@ -195,7 +195,7 @@ func (d *StateDriver) Shutdown() error {
 }
 
 // CleanupOldStates removes states for jobs completed more than the specified duration ago
-func (d *StateDriver) CleanupOldStates(olderThan time.Duration) int {
+func (d *Driver) CleanupOldStates(olderThan time.Duration) int {
 	cutoffTime := time.Now().Add(-olderThan).Unix()
 
 	d.mutex.Lock()

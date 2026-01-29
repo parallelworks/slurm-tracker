@@ -24,7 +24,7 @@ type SacctOutput struct {
 			} `json:"version"`
 		} `json:"Slurm"`
 	} `json:"meta"`
-	Jobs     []SlurmJob `json:"jobs"`
+	Jobs     []Job `json:"jobs"`
 	Errors   []any      `json:"errors"`
 	Warnings []any      `json:"warnings"`
 }
@@ -36,8 +36,8 @@ type NumberValue struct {
 	Number   int  `json:"number"`
 }
 
-// SlurmJob represents a single job from sacct output
-type SlurmJob struct {
+// Job represents a single job from sacct output
+type Job struct {
 	JobID           int    `json:"job_id"`
 	Name            string `json:"name"`
 	User            string `json:"user"`
@@ -107,8 +107,8 @@ type TresAlloc struct {
 	Count int    `json:"count"`
 }
 
-// GetSlurmJobs queries sacct and returns parsed job data
-func GetSlurmJobs(lookbackMinutes int) ([]SlurmJob, error) {
+// GetJobs queries sacct and returns parsed job data
+func GetJobs(lookbackMinutes int) ([]Job, error) {
 	// Calculate the start time
 	startTime := time.Now().Add(-time.Duration(lookbackMinutes) * time.Minute)
 	startTimeStr := startTime.Format("2006-01-02T15:04:05")
@@ -156,12 +156,12 @@ func GetSlurmJobs(lookbackMinutes int) ([]SlurmJob, error) {
 }
 
 // IsJobRunning returns true if the job is currently running
-func IsJobRunning(job SlurmJob) bool {
+func IsJobRunning(job *Job) bool {
 	return job.State.Current == "RUNNING"
 }
 
 // IsJobCompleted returns true if the job has reached a terminal state
-func IsJobCompleted(job SlurmJob) bool {
+func IsJobCompleted(job *Job) bool {
 	completedStates := map[string]bool{
 		"COMPLETED": true,
 		"FAILED":    true,
@@ -175,7 +175,7 @@ func IsJobCompleted(job SlurmJob) bool {
 }
 
 // CalculateCoreHoursForElapsed calculates core hours for a given elapsed time
-func CalculateCoreHoursForElapsed(job SlurmJob, elapsedSeconds int) float64 {
+func CalculateCoreHoursForElapsed(job *Job, elapsedSeconds int) float64 {
 	// Elapsed time is in seconds
 	elapsedHours := float64(elapsedSeconds) / 3600.0
 
