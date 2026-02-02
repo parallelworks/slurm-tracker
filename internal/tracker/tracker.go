@@ -223,7 +223,7 @@ func ProcessJob(cfg *config.Config, job *slurm.Job, stateDriver *state.Driver, p
 		return err
 	}
 	if resp.StatusCode() >= 400 {
-		return fmt.Errorf("failed to create usage event: %s", resp.Status())
+		return fmt.Errorf("failed to create usage event: %s, body: %s", resp.Status(), string(resp.Body))
 	}
 
 	// Update state only after successful API call
