@@ -209,6 +209,13 @@ func ProcessJob(cfg *config.Config, job *slurm.Job, stateDriver *state.Driver, p
 		return nil
 	}
 
+	// print info
+	log.Info().
+		Any("usage_event", usageEvent).
+		Str("sku", skuCode).
+		Str("allocation", allocationName).
+		Str("organization", cfg.OrganizationName).
+		Msg("Creating usage event")
 	// Post the usage event using the allocation from config mapping
 	resp, err := pwClient.CreateUsageEventWithResponse(context.Background(), cfg.OrganizationName, allocationName, usageEvent)
 	if err != nil {
@@ -216,7 +223,7 @@ func ProcessJob(cfg *config.Config, job *slurm.Job, stateDriver *state.Driver, p
 		return err
 	}
 	if resp.StatusCode() >= 400 {
-		return fmt.Errorf("failed to create usage event: %s", resp.Status())
+		return fmt.Errorf("failed to create usage event: %s, body: %s", resp.Status(), string(resp.Body))
 	}
 
 	// Update state only after successful API call
