@@ -2,32 +2,12 @@ package slurm
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os/exec"
 	"time"
 
 	"github.com/rs/zerolog/log"
 )
-
-// SacctOutput represents the JSON output from sacct command
-// Assumes slurm version 23.02.6
-type SacctOutput struct {
-	Meta struct {
-		Slurm struct {
-			Version struct {
-				Major   int    `json:"major"`
-				Minor   int    `json:"minor"`
-				Micro   int    `json:"micro"`
-				Release string `json:"release"`
-				Cluster string `json:"cluster"`
-			} `json:"version"`
-		} `json:"Slurm"`
-	} `json:"meta"`
-	Jobs     []Job `json:"jobs"`
-	Errors   []any      `json:"errors"`
-	Warnings []any      `json:"warnings"`
-}
 
 // NumberValue represents a value that can be set/infinite/number
 type NumberValue struct {
@@ -36,7 +16,16 @@ type NumberValue struct {
 	Number   int  `json:"number"`
 }
 
-// Job represents a single job from sacct output
+// TresAlloc represents a TRES allocation entry
+type TresAlloc struct {
+	Type  string `json:"type"`
+	Name  string `json:"name"`
+	ID    int    `json:"id"`
+	Count int    `json:"count"`
+}
+
+// Job is the canonical normalized job type used throughout the application.
+// Version-specific parsers normalize their output into this type.
 type Job struct {
 	JobID           int    `json:"job_id"`
 	Name            string `json:"name"`
@@ -44,14 +33,14 @@ type Job struct {
 	Account         string `json:"account"`
 	AllocationNodes int    `json:"allocation_nodes"`
 	State           struct {
-		Current string `json:"current"`
+		Current string `json:"current"` // always a plain string (normalized from []string in 23.11)
 		Reason  string `json:"reason"`
 	} `json:"state"`
 	Partition string `json:"partition"`
 	QOS       string `json:"qos"`
 	ExitCode  struct {
-		Status     string `json:"status"`
-		ReturnCode int    `json:"return_code"`
+		Status     string `json:"status"`      // normalized from []string in 23.11
+		ReturnCode int    `json:"return_code"` // normalized from NumberValue in 23.11
 	} `json:"exit_code"`
 	Time struct {
 		Submission int64       `json:"submission"`
@@ -99,17 +88,77 @@ type Job struct {
 	SubmitLine       string   `json:"submit_line"`
 }
 
-// TresAlloc represents a TRES allocation entry
-type TresAlloc struct {
-	Type  string `json:"type"`
-	Name  string `json:"name"`
-	ID    int    `json:"id"`
-	Count int    `json:"count"`
+// GetJobs detects the Slurm version, then queries sacct and returns normalized jobs.
+func GetJobs(lookbackMinutes int) ([]Job, error) {
+	v, err := detectVersion()
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect Slurm version: %w", err)
+	}
+
+	log.Info().
+		Int("major", v.Major).
+		Int("minor", v.Minor).
+		Int("micro", v.Micro).
+		Msg("Detected Slurm version")
+
+	switch {
+	case v.Major == 23 && v.Minor <= 2:
+		return getJobsV2302(lookbackMinutes)
+	default:
+		if v.Major != 23 || v.Minor != 11 {
+			log.Warn().
+				Int("major", v.Major).
+				Int("minor", v.Minor).
+				Msg("Untested Slurm version, falling back to 23.11 parser")
+		}
+		return getJobsV2311(lookbackMinutes)
+	}
 }
 
-// GetJobs queries sacct and returns parsed job data
-func GetJobs(lookbackMinutes int) ([]Job, error) {
-	// Calculate the start time
+// GetCurrentState returns the normalized state string for a job.
+func GetCurrentState(job *Job) string {
+	return job.State.Current
+}
+
+// IsJobRunning returns true if the job is currently running.
+func IsJobRunning(job *Job) bool {
+	return job.State.Current == "RUNNING"
+}
+
+// IsJobCompleted returns true if the job has reached a terminal state.
+func IsJobCompleted(job *Job) bool {
+	completedStates := map[string]bool{
+		"COMPLETED": true,
+		"FAILED":    true,
+		"CANCELLED": true,
+		"TIMEOUT":   true,
+		"PREEMPTED": true,
+		"NODE_FAIL": true,
+	}
+	return completedStates[job.State.Current]
+}
+
+// CalculateCoreHoursForElapsed calculates core hours for a given elapsed time.
+func CalculateCoreHoursForElapsed(job *Job, elapsedSeconds int) float64 {
+	elapsedHours := float64(elapsedSeconds) / 3600.0
+
+	allocatedCPUs := 0
+	for _, tres := range job.Tres.Allocated {
+		if tres.Type == "cpu" {
+			allocatedCPUs = tres.Count
+			break
+		}
+	}
+	if allocatedCPUs == 0 {
+		allocatedCPUs = job.Required.CPUs
+	}
+
+	return float64(allocatedCPUs) * elapsedHours
+}
+
+// runSacct executes the sacct command and returns its raw JSON output.
+// The sacct flags are identical across all supported Slurm versions.
+func runSacct(lookbackMinutes int) ([]byte, error) {
 	startTime := time.Now().Add(-time.Duration(lookbackMinutes) * time.Minute)
 	startTimeStr := startTime.Format("2006-01-02T15:04:05")
 
@@ -117,7 +166,6 @@ func GetJobs(lookbackMinutes int) ([]Job, error) {
 		Str("start_time", startTimeStr).
 		Msg("Querying sacct")
 
-	// Build the sacct command
 	cmd := exec.Command("sacct",
 		"--parsable2",
 		"--allocations",
@@ -140,59 +188,6 @@ func GetJobs(lookbackMinutes int) ([]Job, error) {
 			Msg("sacct command failed")
 		return nil, fmt.Errorf("sacct command failed: %w", err)
 	}
-	cmdOutput := stdout.String()
 
-	// Parse the JSON output
-	var output SacctOutput
-	if err := json.Unmarshal([]byte(cmdOutput), &output); err != nil {
-		log.Error().
-			Str("stdout", cmdOutput).
-			Err(err).
-			Msg("Failed to parse sacct JSON output")
-		return nil, fmt.Errorf("failed to parse sacct output: %w", err)
-	}
-
-	return output.Jobs, nil
-}
-
-// IsJobRunning returns true if the job is currently running
-func IsJobRunning(job *Job) bool {
-	return job.State.Current == "RUNNING"
-}
-
-// IsJobCompleted returns true if the job has reached a terminal state
-func IsJobCompleted(job *Job) bool {
-	completedStates := map[string]bool{
-		"COMPLETED": true,
-		"FAILED":    true,
-		"CANCELLED": true,
-		"TIMEOUT":   true,
-		"PREEMPTED": true,
-		"NODE_FAIL": true,
-	}
-
-	return completedStates[job.State.Current]
-}
-
-// CalculateCoreHoursForElapsed calculates core hours for a given elapsed time
-func CalculateCoreHoursForElapsed(job *Job, elapsedSeconds int) float64 {
-	// Elapsed time is in seconds
-	elapsedHours := float64(elapsedSeconds) / 3600.0
-
-	// Get allocated CPUs (cores) from TRES
-	allocatedCPUs := 0
-	for _, tres := range job.Tres.Allocated {
-		if tres.Type == "cpu" {
-			allocatedCPUs = tres.Count
-			break
-		}
-	}
-
-	// Fallback to required CPUs if TRES not available
-	if allocatedCPUs == 0 {
-		allocatedCPUs = job.Required.CPUs
-	}
-
-	// Core hours = CPUs * hours
-	return float64(allocatedCPUs) * elapsedHours
+	return stdout.Bytes(), nil
 }

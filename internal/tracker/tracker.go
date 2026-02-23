@@ -33,7 +33,7 @@ func ProcessJob(cfg *config.Config, job *slurm.Job, stateDriver *state.Driver, p
 	if !isRunning && !isCompleted {
 		log.Debug().
 			Int("job_id", job.JobID).
-			Str("state", job.State.Current).
+			Str("state", slurm.GetCurrentState(job)).
 			Msg("Skipping job (not running or completed)")
 		return nil
 	}
