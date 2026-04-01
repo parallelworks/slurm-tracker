@@ -33,6 +33,7 @@ type Config struct {
 	OrganizationName  string
 	LookbackMinutes   int
 	DryRun            bool
+	Debug             bool
 	PlatformHost      string
 	StateFile         string
 	ConfigFilePath    string
