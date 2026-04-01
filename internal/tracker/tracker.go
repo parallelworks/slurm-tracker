@@ -128,9 +128,6 @@ func ProcessJob(cfg *config.Config, job *slurm.Job, stateDriver *state.Driver, p
 	if job.Account != "" {
 		metadata["account"] = job.Account
 	}
-	if job.QOS != "" {
-		metadata["qos"] = job.QOS
-	}
 
 	usageEvent := parallelworks.PostUsageEventInput{
 		Quantity:  coreHours,

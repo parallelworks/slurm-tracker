@@ -25,6 +25,7 @@ var (
 func main() {
 	// Configure zerolog
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	if err := rootCmd.Execute(); err != nil {
@@ -41,6 +42,11 @@ var rootCmd = &cobra.Command{
 }
 
 func preRun(cmd *cobra.Command, args []string) error {
+	if cfg.Debug {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		log.Debug().Msg("Debug logging enabled")
+	}
+
 	// Validate required flags
 	apiKey, _ := cmd.Flags().GetString("api-key")
 	if apiKey == "" {
@@ -153,6 +159,7 @@ func init() {
 	rootCmd.Flags().StringVar(&cfg.PlatformHost, "api-server", os.Getenv("PW_PLATFORM_HOST"), "Platform host to send api requests to (defaults to PW_PLATFORM_HOST env var)")
 	rootCmd.Flags().StringVar(&cfg.StateFile, "state-file", "", "File to store running job states (defaults to ./slurm_job_states.db)")
 	rootCmd.Flags().StringVar(&cfg.ConfigFilePath, "config", "config.json", "Path to config file with account/allocation mappings")
+	rootCmd.Flags().BoolVarP(&cfg.Debug, "debug", "d", false, "Enable debug logging")
 
 	// not checking error since its not possible here
 	// required flags are checked in preRun
