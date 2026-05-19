@@ -27,7 +27,32 @@ The program supports incremental reporting for long-running jobs:
 
 - **API Key**: You must have a valid ACTIVATE API key to post usage events. See [Getting an API Key](#getting-an-api-key) for instructions.
 - **Slurm**: The `sacct` command must be available and accessible.
-- **Go**: Go 1.21+ for building from source.
+- **Slurm Configuration**: there must be a Slurm account and a user is added to that account. The following example commands work for a Parallel Works cloud cluster:
+```
+sudo sacctmgr -i add account name=myacct description="Test Slurm account"
+sudo sacctmgr -i add user name=$USER account=myacct
+```
+- **ACTIVATE Configuration**: your ACTIVATE account (that is associated with the API key above) must have access to an allocation either in your own account or shared with your account via your account's group membership. This allocation, in turn, must be tied to one unit for tracking utilization. A single unit can have multiple SKUs attached to it (i.e. GPU, RAM, CPU, software licenses) but the unit always has a single cost per hour.
+- **Go**: Go 1.21+ for building from source. Detailed instructions for installing Go are available [here](https://go.dev/doc/install). The following summary of the Go install process works well for Slurm clusters provisioned via ACTIVATE:
+```
+# Set Go version
+export GO_VER="1.26.3"
+
+# Download Go binaries
+wget https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz
+
+# Delete existing Go installation
+rm -rf /usr/local/go
+
+# Unpack Go download
+tar -C /usr/local -xzf go${GO_VER}.linux-amd64.tar.gz
+
+# Set up Go on your path
+export PATH=${PATH}:/usr/local/go/bin
+
+# Test Go installation
+go version
+```
 
 ## Installation
 
@@ -46,6 +71,7 @@ git clone https://github.com/parallelworks/slurm-tracker.git
 cd slurm-tracker
 go build -o slurm-tracker ./cmd/slurm-tracker
 ```
+The build command above will, by default, install all the dependencies in `$HOME/go/pkg`.
 
 ## Getting an API Key
 
