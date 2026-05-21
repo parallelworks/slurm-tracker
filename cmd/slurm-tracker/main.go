@@ -88,6 +88,9 @@ func preRun(cmd *cobra.Command, args []string) error {
 		if platformHost == "" {
 			return fmt.Errorf("no platform host provided. Set PW_PLATFORM_HOST environment variable or use --api-server flag")
 		}
+	} else if !strings.Contains(platformHost, "://") {
+		// Check for missing https://
+		platformHost = "https://" + platformHost
 	}
 
 	var err error
