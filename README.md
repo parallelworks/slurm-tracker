@@ -42,10 +42,10 @@ export GO_VER="1.26.3"
 wget https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz
 
 # Delete existing Go installation
-rm -rf /usr/local/go
+sudo rm -rf /usr/local/go
 
 # Unpack Go download
-tar -C /usr/local -xzf go${GO_VER}.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go${GO_VER}.linux-amd64.tar.gz
 
 # Set up Go on your path
 export PATH=${PATH}:/usr/local/go/bin
