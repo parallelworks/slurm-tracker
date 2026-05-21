@@ -8,6 +8,12 @@ The ACTIVATE platform allows users to access cloud and on-prem compute resources
 
 This program is a custom integration that collects Slurm job statistics (specifically core hours, but expandable to other metrics) and posts usage events to the ACTIVATE platform's budget system.
 
+In particular, `slurm-tracker` maps Slurm **account** usage to allocations (i.e. budgets) defined in the ACTIVATE platform. Furthermore, `slurm-tracker` maps Slurm **partition** usage to SKU codes defined in the ACTIVATE platform to determine the final cost. For example,
+```bash
+srun -N 1 -A research-team -p small-node --pty /bin/bash
+```
+will be associated with the Slurm account `research-team` which is tied to a specific allocation on ACTIVATE through the `slurm-tracker` configuration. `slurm-tracker` will compute the number of CPU hours used by one node (`-N 1`) in the `small-node` partition and the cost **per core per hour** of using that parition/SKU is determined by the corresponding unit on ACTIVATE.
+
 ## How It Works
 
 1. **Query Slurm** - The program runs `sacct` to fetch jobs from the past N minutes (configurable via `--lookback`)
@@ -28,13 +34,17 @@ The program supports incremental reporting for long-running jobs:
 - **API Key**: You must have a valid ACTIVATE API key to post usage events. See [Getting an API Key](#getting-an-api-key) for instructions.
 - **Slurm**: The `sacct` command must be available and accessible.
 - **Slurm Configuration**: there must be a Slurm account and a user is added to that account. The following example commands work for a Parallel Works cloud cluster:
+
+```bash
+sudo sacctmgr -i add account name=research-team description="Research team account"
+sudo sacctmgr -i add user name=$USER account=research-team
 ```
-sudo sacctmgr -i add account name=myacct description="Test Slurm account"
-sudo sacctmgr -i add user name=$USER account=myacct
-```
+(The example Slurm account name generated here, `research-team`, will be used in the `slurm-tracker` configuration below.)
+
 - **ACTIVATE Configuration**: your ACTIVATE account (that is associated with the API key above) must have access to an allocation either in your own account or shared with your account via your account's group membership. This allocation, in turn, must be tied to one unit for tracking utilization. A single unit can have multiple SKUs attached to it (i.e. GPU, RAM, CPU, software licenses) but the unit always has a single cost per hour.
 - **Go**: Go 1.21+ for building from source. Detailed instructions for installing Go are available [here](https://go.dev/doc/install). The following summary of the Go install process works well for Slurm clusters provisioned via ACTIVATE:
-```
+
+```bash
 # Set Go version
 export GO_VER="1.26.3"
 
