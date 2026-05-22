@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"strings"
 
 	parallelworks "github.com/parallelworks/sdk/go"
 	"github.com/rs/zerolog"
