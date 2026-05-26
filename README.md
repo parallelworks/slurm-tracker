@@ -12,13 +12,24 @@ In particular, `slurm-tracker` maps Slurm **account** usage to allocations (i.e.
 ```bash
 srun -N 1 -A research-team -p small-node --pty /bin/bash
 ```
-will be associated with the Slurm account `research-team` which is tied to a specific allocation on ACTIVATE through the `slurm-tracker` configuration. `slurm-tracker` will compute the number of CPU hours used by one node (`-N 1`) in the `small-node` partition and the cost **per core per hour** of using that parition/SKU is determined by the corresponding unit on ACTIVATE.
+will be associated with the Slurm account `research-team` 
+which is tied to a specific allocation on ACTIVATE through 
+the `slurm-tracker` configuration. `slurm-tracker` will 
+compute the number of CPU hours used by one node (`-N 1`) in 
+the `small-node` partition and the cost **per hour of node usage** 
+of using that parition/SKU is determined by the corresponding 
+unit on ACTIVATE. Currently, `slurm-tracker` does **not** 
+autodetect the number of CPUs (or other node parameters) to 
+inform billing; it is up to the administrator to ensure that 
+the `slurm-tracker` configuration properly maps the Slurm 
+partition that is being used with the desired cost in the 
+curresponding unit.
 
 ## How It Works
 
 1. **Query Slurm** - The program runs `sacct` to fetch jobs from the past N minutes (configurable via `--lookback`)
 2. **Track Job State** - Uses a SQLite database to track which jobs have been reported and how much time has already been reported for running jobs
-3. **Calculate Core Hours** - For each job, calculates core hours based on allocated CPUs × elapsed time
+3. **Calculate Node Hours** - For each job, calculates node hours based on allocated nodes × elapsed time
 4. **Map to Allocations** - Maps Slurm accounts to ACTIVATE allocations and partitions to SKU codes using a config file
 5. **Post Usage Events** - Creates usage events in the ACTIVATE platform via API
 
@@ -217,7 +228,7 @@ Each usage event posted to ACTIVATE includes:
 
 ## Extending to Other Metrics
 
-While currently focused on `CORE_HOUR`, the program can be extended to track other metrics:
+While currently focused on `NODE_HOUR`, the program can be extended to track other metrics:
 
 - **Memory Hours**: Track memory × time usage
 - **GPU Hours**: Track GPU allocation for GPU partitions
