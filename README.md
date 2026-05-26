@@ -18,12 +18,22 @@ the `slurm-tracker` configuration. `slurm-tracker` will
 compute the number of CPU hours used by one node (`-N 1`) in 
 the `small-node` partition and the cost **per hour of node usage** 
 of using that parition/SKU is determined by the corresponding 
-unit on ACTIVATE. Currently, `slurm-tracker` does **not** 
+unit on ACTIVATE.
+
+## Caveats
+
+- Currently, `slurm-tracker` does **not** 
 autodetect the number of CPUs (or other node parameters) to 
 inform billing; it is up to the administrator to ensure that 
 the `slurm-tracker` configuration properly maps the Slurm 
 partition that is being used with the desired cost in the 
 curresponding unit.
+- Currently there is no mechanism in `slurm-tracker` that
+accounts for two different allocations on the same node. 
+For example, if a user has two allocations and both are 
+running on the same node, `slurm-tracker` computes the 
+node hours as if those two allocations were on two 
+different nodes.
 
 ## How It Works
 
@@ -140,6 +150,15 @@ Create a `config.json` file (see `config.sample.json` for reference):
 | `defaultAllocation` | Fallback allocation when no account mapping matches |
 | `partition` | Maps Slurm partition names to SKU codes |
 | `account` | Maps Slurm account names to ACTIVATE allocation OIDs |
+
+Note that:
+- SKUs are accessed by their **code**, and not their **names**, as
+listed in the configuration of the unit tied to that particular 
+allocation and
+- Allocations are accessed by their **name** as listed on the 
+`My Allocations` tab. There is currently no separate identifier
+for allocations.
+
 
 ### Environment Variables
 
