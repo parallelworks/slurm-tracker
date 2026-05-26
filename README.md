@@ -8,11 +8,38 @@ The ACTIVATE platform allows users to access cloud and on-prem compute resources
 
 This program is a custom integration that collects Slurm job statistics (specifically core hours, but expandable to other metrics) and posts usage events to the ACTIVATE platform's budget system.
 
+In particular, `slurm-tracker` maps Slurm **account** usage to allocations (i.e. budgets) defined in the ACTIVATE platform. Furthermore, `slurm-tracker` maps Slurm **partition** usage to SKU codes defined in the ACTIVATE platform to determine the final cost. For example,
+```bash
+srun -N 1 -A research-team -p small-node --pty /bin/bash
+```
+will be associated with the Slurm account `research-team` 
+which is tied to a specific allocation on ACTIVATE through 
+the `slurm-tracker` configuration. `slurm-tracker` will 
+compute the number of CPU hours used by one node (`-N 1`) in 
+the `small-node` partition and the cost **per hour of node usage** 
+of using that parition/SKU is determined by the corresponding 
+unit on ACTIVATE.
+
+## Caveats
+
+- Currently, `slurm-tracker` does **not** 
+autodetect the number of CPUs (or other node parameters) to 
+inform billing; it is up to the administrator to ensure that 
+the `slurm-tracker` configuration properly maps the Slurm 
+partition that is being used with the desired cost in the 
+curresponding unit.
+- Currently there is no mechanism in `slurm-tracker` that
+accounts for two different allocations on the same node. 
+For example, if a user has two allocations and both are 
+running on the same node, `slurm-tracker` computes the 
+node hours as if those two allocations were on two 
+different nodes.
+
 ## How It Works
 
 1. **Query Slurm** - The program runs `sacct` to fetch jobs from the past N minutes (configurable via `--lookback`)
 2. **Track Job State** - Uses a SQLite database to track which jobs have been reported and how much time has already been reported for running jobs
-3. **Calculate Core Hours** - For each job, calculates core hours based on allocated CPUs × elapsed time
+3. **Calculate Node Hours** - For each job, calculates node hours based on allocated nodes × elapsed time
 4. **Map to Allocations** - Maps Slurm accounts to ACTIVATE allocations and partitions to SKU codes using a config file
 5. **Post Usage Events** - Creates usage events in the ACTIVATE platform via API
 
@@ -27,7 +54,36 @@ The program supports incremental reporting for long-running jobs:
 
 - **API Key**: You must have a valid ACTIVATE API key to post usage events. See [Getting an API Key](#getting-an-api-key) for instructions.
 - **Slurm**: The `sacct` command must be available and accessible.
-- **Go**: Go 1.21+ for building from source.
+- **Slurm Configuration**: there must be a Slurm account and a user is added to that account. The following example commands work for a Parallel Works cloud cluster:
+
+```bash
+sudo sacctmgr -i add account name=research-team description="Research team account"
+sudo sacctmgr -i add user name=$USER account=research-team
+```
+(The example Slurm account name generated here, `research-team`, will be used in the `slurm-tracker` configuration below.)
+
+- **ACTIVATE Configuration**: your ACTIVATE account (that is associated with the API key above) must have access to an allocation either in your own account or shared with your account via your account's group membership. This allocation, in turn, must be tied to one unit for tracking utilization. A single unit can have multiple SKUs attached to it (i.e. GPU, RAM, CPU, software licenses) but the unit always has a single cost per hour.
+- **Go**: Go 1.21+ for building from source. Detailed instructions for installing Go are available [here](https://go.dev/doc/install). The following summary of the Go install process works well for Slurm clusters provisioned via ACTIVATE:
+
+```bash
+# Set Go version
+export GO_VER="1.26.3"
+
+# Download Go binaries
+wget https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz
+
+# Delete existing Go installation
+sudo rm -rf /usr/local/go
+
+# Unpack Go download
+sudo tar -C /usr/local -xzf go${GO_VER}.linux-amd64.tar.gz
+
+# Set up Go on your path
+export PATH=${PATH}:/usr/local/go/bin
+
+# Test Go installation
+go version
+```
 
 ## Installation
 
@@ -46,6 +102,7 @@ git clone https://github.com/parallelworks/slurm-tracker.git
 cd slurm-tracker
 go build -o slurm-tracker ./cmd/slurm-tracker
 ```
+The build command above will, by default, install all the dependencies in `$HOME/go/pkg`.
 
 ## Getting an API Key
 
@@ -93,6 +150,15 @@ Create a `config.json` file (see `config.sample.json` for reference):
 | `defaultAllocation` | Fallback allocation when no account mapping matches |
 | `partition` | Maps Slurm partition names to SKU codes |
 | `account` | Maps Slurm account names to ACTIVATE allocation OIDs |
+
+Note that:
+- SKUs are accessed by their **code**, and not their **names**, as
+listed in the configuration of the unit tied to that particular 
+allocation and
+- Allocations are accessed by their **name** as listed on the 
+`My Allocations` tab. There is currently no separate identifier
+for allocations.
+
 
 ### Environment Variables
 
@@ -181,7 +247,7 @@ Each usage event posted to ACTIVATE includes:
 
 ## Extending to Other Metrics
 
-While currently focused on `CORE_HOUR`, the program can be extended to track other metrics:
+While currently focused on `NODE_HOUR`, the program can be extended to track other metrics:
 
 - **Memory Hours**: Track memory × time usage
 - **GPU Hours**: Track GPU allocation for GPU partitions

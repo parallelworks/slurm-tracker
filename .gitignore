@@ -1,2 +1,4 @@
 slurm_job_states.db
 config.json
+slurm-tracker
+*.db
